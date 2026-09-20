@@ -97,11 +97,17 @@ void loop() {
 
     int data = analogRead(SensorInputPin);
 
+    const int LIMIT = 3000;
+
     // filter processing
     int dataAfterFilter = myFilter.update(data);
 
     // Get envelope by squaring the input
     int envelope = sq(dataAfterFilter);
+
+    if (envelope > LIMIT) {
+        Serial.println("Envelope value exceeds the limit of 1023, please check your input signal.");
+    }
 
     if (CALIBRATE) {
         Serial.print("Squared Data: ");

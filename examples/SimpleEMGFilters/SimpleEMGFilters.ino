@@ -63,8 +63,6 @@
 //      the sEMG sensor.
 #define CALIBRATE 1
 
-int baseline = 200;
-
 EMGFilters myFilter;
 
 // Set the input frequency.
@@ -82,6 +80,41 @@ unsigned long long interval = 1000000ul / sampleRate;
 // For countries with 60Hz power line, change to "NOTCH_FREQ_60HZ"
 NOTCH_FREQUENCY humFreq = NOTCH_FREQ_50HZ;
 
+int restBaseline = 0;
+int flexBaseline = 0;
+int limit = 0;
+
+void calibrateBaseline(bool relaxedMode) {
+    Serial.println(relaxedMode ? "Relaxed calibration..." : "Flex calibration...");
+    unsigned long startTime = millis();
+    int maxValue = 0;
+
+    while (millis() - startTime < 5000) {
+        int data = analogRead(SensorInputPin);
+        int filtered = myFilter.update(data);
+        int envelope = sq(filtered);
+
+        if (envelope > maxValue) {
+            maxValue = envelope;
+        }
+    }
+
+    if (relaxedMode) {
+        restBaseline = maxValue;
+        Serial.print("Rest baseline: ");
+    } else {
+        flexBaseline = maxValue;
+        Serial.print("Flex baseline: ");
+    }
+
+    Serial.println(maxValue);
+
+    if (restBaseline > 0 && flexBaseline > 0) {
+        limit = flexBaseline * 2;
+        Serial.print("New limit: ");
+        Serial.println(limit);
+    }
+}
 
 void setup() {
     /* add setup code here */
@@ -89,6 +122,12 @@ void setup() {
 
     // open serial
     Serial.begin(115200);
+
+    if (Serial.available()) {
+        char c = Serial.read();
+        if (c == 'r') calibrateBaseline(true);
+        if (c == 'f') calibrateBaseline(false);
+    }
 }
 
 void loop() {
@@ -105,22 +144,8 @@ void loop() {
     // Get envelope by squaring the input
     int envelope = sq(dataAfterFilter);
 
-    if (envelope > LIMIT) {
-        Serial.println("Envelope value exceeds the limit of 1023, please check your input signal.");
-    }
-
-    if (CALIBRATE) {
-        Serial.print("Squared Data: ");
-        Serial.println(envelope);
-    }
-    else {
-        // Any value below the `baseline` value will be treated as zero
-        if (envelope < baseline) {
-            dataAfterFilter = 0;
-            envelope = 0;
-        }
-        // You may plot the data using Arduino SerialPlotter.
-        Serial.print(envelope);
+    if (limit > 0 && envelope > limit) {
+        Serial.println("OVER THE LIMIT");
     }
 
     // Usually, you should still have (interval - timeElapsed) to do other work.
